@@ -1,329 +1,209 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
-import { Plus, Minus, X } from 'lucide-react';
-import { storage, type Item, type Invoice, type InvoiceItem } from '@/lib/storage';
-import { useToast } from '@/hooks/use-toast';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-
-// Form validation schema
-const formSchema = z.object({
-  customerName: z.string().min(2, 'Name must be at least 2 characters'),
-  customerPhone: z.string()
-    .regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number')
-    .optional()
-    .or(z.literal('')),
-  customerAddress: z.string().optional(),
-  taxRate: z.number()
-    .min(0, 'Tax rate cannot be negative')
-    .max(100, 'Tax rate cannot exceed 100%'),
-});
-
-type FormValues = z.infer<typeof formSchema>;
+import { Plus, Minus, Trash2 } from 'lucide-react';
+import { itemsApi, type Item } from '@/lib/api';
 
 interface InvoiceFormProps {
-  onSave: () => void;
+  onSave: (invoice: any) => void;
   onCancel: () => void;
+  initialData?: any;
 }
 
-export function InvoiceForm({ onSave, onCancel }: InvoiceFormProps) {
+export function InvoiceForm({ onSave, onCancel, initialData }: InvoiceFormProps) {
   const [items, setItems] = useState<Item[]>([]);
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
-  const { toast } = useToast();
-
-  // Initialize form with react-hook-form
-  const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      customerName: '',
-      customerPhone: '',
-      customerAddress: '',
-      taxRate: 8.25,
-    },
-  });
+  const [selectedItems, setSelectedItems] = useState<Array<{
+    id: number;
+    itemId: number;
+    name: string;
+    quantity: number;
+    price: number;
+    total: number;
+  }>>([]);
+  const [customerName, setCustomerName] = useState(initialData?.customerName || '');
+  const [customerPhone, setCustomerPhone] = useState(initialData?.customerPhone || '');
 
   useEffect(() => {
-    setItems(storage.getItems());
-  }, []);
+    loadItems();
+    if (initialData) {
+      setSelectedItems(initialData.items.map((item: any) => ({
+        id: item.id,
+        itemId: item.itemId,
+        name: item.itemName,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.total
+      })));
+    }
+  }, [initialData]);
 
-  const addItem = (itemId: string) => {
-    const item = items.find(i => i.id === itemId);
+  const loadItems = async () => {
+    try {
+      const loadedItems = await itemsApi.getItems();
+      setItems(loadedItems);
+    } catch (error) {
+      console.error('Failed to load items:', error);
+    }
+  };
+
+  const handleAddItem = (itemId: string) => {
+    const item = items.find(i => i.id === parseInt(itemId));
     if (!item) return;
 
-    const existingItem = invoiceItems.find(ii => ii.itemId === itemId);
-    if (existingItem) {
-      updateQuantity(itemId, existingItem.quantity + 1);
-    } else {
-      const newInvoiceItem: InvoiceItem = {
+    setSelectedItems(prev => [
+      ...prev,
+      {
+        id: Date.now(),
         itemId: item.id,
-        itemName: item.name,
+        name: item.name,
         quantity: 1,
         price: item.price,
         total: item.price
-      };
-      setInvoiceItems([...invoiceItems, newInvoiceItem]);
-    }
+      }
+    ]);
   };
 
-  const updateQuantity = (itemId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeItem(itemId);
-      return;
-    }
-
-    setInvoiceItems(prev => prev.map(item => 
-      item.itemId === itemId 
-        ? { ...item, quantity, total: item.price * quantity }
-        : item
-    ));
+  const handleQuantityChange = (id: number, change: number) => {
+    setSelectedItems(prev => prev.map(item => {
+      if (item.id === id) {
+        const newQuantity = Math.max(1, item.quantity + change);
+        return {
+          ...item,
+          quantity: newQuantity,
+          total: item.price * newQuantity
+        };
+      }
+      return item;
+    }));
   };
 
-  const removeItem = (itemId: string) => {
-    setInvoiceItems(prev => prev.filter(item => item.itemId !== itemId));
+  const handleRemoveItem = (id: number) => {
+    setSelectedItems(prev => prev.filter(item => item.id !== id));
   };
 
-  const subtotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
-  const taxAmount = subtotal * (form.watch('taxRate') / 100);
-  const total = subtotal + taxAmount;
+  const calculateTotal = () => {
+    return selectedItems.reduce((sum, item) => sum + item.total, 0);
+  };
 
-  const handleSave = form.handleSubmit((data) => {
-    if (invoiceItems.length === 0) {
-      toast({
-        title: "Error",
-        description: "Please add at least one item to the invoice",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const invoice: Invoice = {
-      id: Date.now().toString(),
-      invoiceNumber: storage.getNextInvoiceNumber(),
-      date: new Date().toISOString().split('T')[0],
-      customerName: data.customerName,
-      customerPhone: data.customerPhone || undefined,
-      customerAddress: data.customerAddress || undefined,
-      items: invoiceItems,
-      subtotal,
-      taxRate: data.taxRate,
-      taxAmount,
-      total
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const invoice = {
+      customerName,
+      customerPhone,
+      date: new Date().toISOString(),
+      items: selectedItems.map(item => ({
+        itemId: item.itemId,
+        quantity: item.quantity,
+        price: item.price
+      })),
+      total: calculateTotal()
     };
 
-    storage.saveInvoice(invoice);
-    onSave();
-  });
-
-  const groupedItems = items.reduce((acc, item) => {
-    if (!acc[item.category]) {
-      acc[item.category] = [];
-    }
-    acc[item.category].push(item);
-    return acc;
-  }, {} as Record<string, Item[]>);
+    onSave(invoice);
+  };
 
   return (
-    <Form {...form}>
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Customer Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Customer Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name="customerName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Customer Name *</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="Enter customer name" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="customerPhone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="Enter phone number" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="taxRate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tax Rate (%)</FormLabel>
-                    <FormControl>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <Label htmlFor="customerName">Customer Name</Label>
+          <Input
+            id="customerName"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="customerPhone">Phone Number</Label>
                       <Input
-                        type="number"
-                        step="0.01"
-                        {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                        placeholder="8.25"
+            id="customerPhone"
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
                       />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+        </div>
             </div>
             
-            <FormField
-              control={form.control}
-              name="customerAddress"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Address</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} placeholder="Enter customer address" rows={2} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Add Items */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Add Items</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {Object.entries(groupedItems).map(([category, categoryItems]) => (
-                <div key={category}>
-                  <h4 className="font-semibold text-foreground mb-2 capitalize">{category}s</h4>
-                  <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                    {categoryItems.map((item) => (
-                      <Button
-                        key={item.id}
-                        type="button"
-                        variant="outline"
-                        className="h-auto p-3 justify-between"
-                        onClick={() => addItem(item.id)}
-                      >
-                        <div className="text-left">
-                          <div className="font-medium">{item.name}</div>
-                          <div className="text-sm text-muted-foreground">${item.price.toFixed(2)}</div>
-                        </div>
-                        <Plus className="w-4 h-4 ml-2" />
-                      </Button>
-                    ))}
+      <div>
+        <Label>Add Items</Label>
+        <Select onValueChange={handleAddItem}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select an item" />
+          </SelectTrigger>
+          <SelectContent>
+            {items.map((item) => (
+              <SelectItem key={item.id} value={item.id.toString()}>
+                {item.name} - LKR {item.price.toFixed(2)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
                   </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Invoice Items */}
-        {invoiceItems.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Invoice Items</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {invoiceItems.map((item) => (
-                  <div key={item.itemId} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex-1">
-                      <h4 className="font-medium">{item.itemName}</h4>
-                      <p className="text-sm text-muted-foreground">${item.price.toFixed(2)} each</p>
-                    </div>
-                    
+      {selectedItems.length > 0 && (
+        <Card className="p-4">
+          <div className="space-y-4">
+            {selectedItems.map((item) => (
+              <div key={item.id} className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="font-medium">{item.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    LKR {item.price.toFixed(2)} × {item.quantity} = LKR {item.total.toFixed(2)}
+                  </p>
+                </div>
                     <div className="flex items-center space-x-2">
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
-                        onClick={() => updateQuantity(item.itemId, item.quantity - 1)}
+                    size="icon"
+                    onClick={() => handleQuantityChange(item.id, -1)}
                       >
-                        <Minus className="w-3 h-3" />
+                    <Minus className="h-4 w-4" />
                       </Button>
-                      
-                      <span className="w-8 text-center font-medium">{item.quantity}</span>
-                      
+                  <span className="w-8 text-center">{item.quantity}</span>
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
-                        onClick={() => updateQuantity(item.itemId, item.quantity + 1)}
+                    size="icon"
+                    onClick={() => handleQuantityChange(item.id, 1)}
                       >
-                        <Plus className="w-3 h-3" />
+                    <Plus className="h-4 w-4" />
                       </Button>
-                      
-                      <div className="w-20 text-right font-medium">
-                        ${item.total.toFixed(2)}
-                      </div>
-                      
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
-                        onClick={() => removeItem(item.itemId)}
+                    size="icon"
+                    onClick={() => handleRemoveItem(item.id)}
                       >
-                        <X className="w-3 h-3" />
+                    <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
                 ))}
+            <div className="pt-4 border-t">
+              <div className="flex justify-between">
+                <p className="font-semibold">Total</p>
+                <p className="font-semibold">LKR {calculateTotal().toFixed(2)}</p>
               </div>
-              
-              <Separator className="my-4" />
-              
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span className="font-medium">${subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tax ({form.watch('taxRate')}%):</span>
-                  <span className="font-medium">${taxAmount.toFixed(2)}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total:</span>
-                  <span>${total.toFixed(2)}</span>
                 </div>
               </div>
-            </CardContent>
           </Card>
         )}
 
-        {/* Actions */}
-        <div className="flex space-x-2">
-          <Button type="submit" className="flex-1">
-            Save Invoice
-          </Button>
+      <div className="flex justify-end space-x-2">
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
+        <Button type="submit" disabled={selectedItems.length === 0 || !customerName}>
+          {initialData ? 'Update' : 'Create'} Invoice
+        </Button>
         </div>
       </form>
-    </Form>
   );
 }

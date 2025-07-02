@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Plus, Edit, Trash2, Pizza, Coffee, PlusCircle } from 'lucide-react';
-import { storage, type Item } from '@/lib/storage';
+import { itemsApi, type Item } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
@@ -58,9 +58,17 @@ export function ItemManagement() {
     loadItems();
   }, []);
 
-  const loadItems = () => {
-    const loadedItems = storage.getItems();
+  const loadItems = async () => {
+    try {
+      const loadedItems = await itemsApi.getItems();
     setItems(loadedItems);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load items",
+        variant: "destructive"
+      });
+    }
   };
 
   const resetForm = () => {
@@ -73,12 +81,12 @@ export function ItemManagement() {
     setEditingItem(null);
   };
 
-  const handleSubmit = form.handleSubmit((data) => {
+  const handleSubmit = form.handleSubmit(async (data) => {
     try {
       const price = parseFloat(data.price);
       
       if (editingItem) {
-        storage.updateItem(editingItem.id, {
+        await itemsApi.updateItem(editingItem.id, {
           name: data.name,
           category: data.category,
           price,
@@ -89,7 +97,7 @@ export function ItemManagement() {
           description: "Item updated successfully"
         });
       } else {
-        storage.addItem({
+        await itemsApi.createItem({
           name: data.name,
           category: data.category,
           price,
@@ -107,7 +115,7 @@ export function ItemManagement() {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to save item",
+        description: editingItem ? "Failed to update item" : "Failed to create item",
         variant: "destructive"
       });
     }
@@ -124,9 +132,9 @@ export function ItemManagement() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (item: Item) => {
+  const handleDelete = async (item: Item) => {
     try {
-      storage.deleteItem(item.id);
+      await itemsApi.deleteItem(item.id);
       loadItems();
       toast({
         title: "Success",
@@ -202,9 +210,9 @@ export function ItemManagement() {
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Item Name *</FormLabel>
+                      <FormLabel>Name</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="Enter item name" />
+                        <Input {...field} placeholder="Item name" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -216,14 +224,14 @@ export function ItemManagement() {
                   name="category"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Category *</FormLabel>
+                      <FormLabel>Category</FormLabel>
                       <Select
-                        value={field.value}
                         onValueChange={field.onChange}
+                        defaultValue={field.value}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue />
+                            <SelectValue placeholder="Select a category" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -243,14 +251,9 @@ export function ItemManagement() {
                   name="price"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Price (LKR) *</FormLabel>
+                      <FormLabel>Price</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          {...field}
-                          placeholder="0.00"
-                        />
+                        <Input {...field} type="number" step="0.01" placeholder="0.00" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -264,23 +267,19 @@ export function ItemManagement() {
                     <FormItem>
                       <FormLabel>Description</FormLabel>
                       <FormControl>
-                        <Textarea
-                          {...field}
-                          placeholder="Optional description"
-                          rows={3}
-                        />
+                        <Textarea {...field} placeholder="Item description" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
                 
-                <div className="flex space-x-2 pt-4">
-                  <Button type="submit" className="flex-1">
-                    {editingItem ? 'Update Item' : 'Add Item'}
-                  </Button>
+                <div className="flex justify-end space-x-2">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                     Cancel
+                  </Button>
+                  <Button type="submit">
+                    {editingItem ? 'Update' : 'Add'} Item
                   </Button>
                 </div>
               </form>
@@ -289,7 +288,7 @@ export function ItemManagement() {
         </Dialog>
       </div>
 
-      {Object.keys(groupedItems).length === 0 ? (
+      {Object.entries(groupedItems).length === 0 ? (
         <Card>
           <CardContent className="text-center py-12">
             <Pizza className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
@@ -302,77 +301,54 @@ export function ItemManagement() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
-          {Object.entries(groupedItems).map(([category, categoryItems]) => (
-            <Card key={category}>
+        Object.entries(groupedItems).map(([category, categoryItems]) => (
+            <Card key={`category-${category}`}>
               <CardHeader>
-                <CardTitle className="flex items-center space-x-2 capitalize">
-                  {getCategoryIcon(category as Item['category'])}
-                  <span>{category}s ({categoryItems.length})</span>
-                </CardTitle>
+              <CardTitle className="capitalize">{category}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {categoryItems.map((item) => (
-                    <Card key={item.id} className="relative transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group">
+                  <Card key={`item-${item.id}`} className="transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group">
                       <CardContent className="p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-foreground">{item.name}</h4>
-                            <Badge className={`${getCategoryColor(item.category)} text-xs mt-1`}>
-                              {item.category}
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-2">
+                          <h3 className="font-semibold text-foreground">{item.name}</h3>
+                          <Badge variant="outline" className={getCategoryColor(item.category)}>
+                            <span className="flex items-center space-x-1">
+                              {getCategoryIcon(item.category)}
+                              <span>{item.category}</span>
+                            </span>
                             </Badge>
-                          </div>
-                          <div className="text-right">
+                          {item.description && (
+                            <p className="text-sm text-muted-foreground">{item.description}</p>
+                          )}
                             <p className="text-lg font-bold text-foreground">LKR {item.price.toFixed(2)}</p>
-                          </div>
                         </div>
-                        
-                        {item.description && (
-                          <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                            {item.description}
-                          </p>
-                        )}
-                        
-                        <div className="flex space-x-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEdit(item)}
-                            className="flex-1 items-center"
-                          >
-                            <Edit className="w-3 h-3 mr-1" />
-                            Edit
+                        <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button size="icon" variant="ghost" onClick={() => handleEdit(item)}>
+                            <Edit className="w-4 h-4" />
                           </Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="items-center"
-                              >
-                                <Trash2 className="w-3 h-3" />
+                              <Button size="icon" variant="ghost">
+                                <Trash2 className="w-4 h-4" />
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Delete Item</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Are you sure you want to delete "{item.name}"? This action cannot be undone.
+                                  Are you sure you want to delete {item.name}? This action cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDelete(item)}
-                                >
-                                  Delete
-                                </AlertDialogAction>
+                                <AlertDialogAction onClick={() => handleDelete(item)}>Delete</AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
+                        </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -380,8 +356,7 @@ export function ItemManagement() {
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
+        ))
       )}
     </div>
   );

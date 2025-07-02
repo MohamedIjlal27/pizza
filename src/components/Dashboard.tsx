@@ -16,55 +16,57 @@ import {
   Calendar,
   BarChart3
 } from 'lucide-react';
-import { storage, type Invoice, type Item } from '@/lib/storage';
+import { dashboardApi, type DashboardMetrics, type TopSellingItem, type RecentOrder } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 
 export function Dashboard() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [items, setItems] = useState<Item[]>([]);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [topItems, setTopItems] = useState<TopSellingItem[]>([]);
+  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
-    setInvoices(storage.getInvoices());
-    setItems(storage.getItems());
-  }, []);
+    const loadDashboardData = async () => {
+      try {
+        const [metricsData, topItemsData, recentOrdersData] = await Promise.all([
+          dashboardApi.getMetrics(),
+          dashboardApi.getTopItems(),
+          dashboardApi.getRecentOrders()
+        ]);
 
-  // Calculate metrics
-  const totalRevenue = invoices.reduce((sum, invoice) => sum + invoice.total, 0);
-  const totalOrders = invoices.length;
-  const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-  const totalItems = items.length;
-
-  // Recent invoices (last 7 days)
-  const last7Days = new Date();
-  last7Days.setDate(last7Days.getDate() - 7);
-  const recentInvoices = invoices.filter(
-    invoice => new Date(invoice.date) >= last7Days
-  );
-  const recentRevenue = recentInvoices.reduce((sum, invoice) => sum + invoice.total, 0);
-
-  // Top selling items
-  const itemSales = invoices.reduce((acc, invoice) => {
-    invoice.items.forEach(item => {
-      if (!acc[item.itemName]) {
-        acc[item.itemName] = { quantity: 0, revenue: 0 };
+        setMetrics(metricsData);
+        setTopItems(topItemsData);
+        setRecentOrders(recentOrdersData);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load dashboard data",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoading(false);
       }
-      acc[item.itemName].quantity += item.quantity;
-      acc[item.itemName].revenue += item.total;
-    });
-    return acc;
-  }, {} as Record<string, { quantity: number; revenue: number }>);
+    };
 
-  const topItems = Object.entries(itemSales)
-    .sort((a, b) => b[1].quantity - a[1].quantity)
-    .slice(0, 5);
+    loadDashboardData();
+  }, [toast]);
 
-  // Recent activity
-  const recentActivity = invoices
-    .slice()
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5);
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
-  // Growth calculation (mock for demo)
-  const growthRate = 12.5; // This would typically be calculated from historical data
+  if (!metrics) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">Failed to load dashboard data</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -83,10 +85,10 @@ export function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Revenue</p>
-                <p className="text-3xl font-bold text-foreground">LKR {totalRevenue.toFixed(2)}</p>
+                <p className="text-3xl font-bold text-foreground">LKR {metrics.totalRevenue.toFixed(2)}</p>
                 <div className="flex items-center text-sm text-success mt-1">
                   <ArrowUpRight className="w-4 h-4 mr-1" />
-                  <span>+{growthRate}%</span>
+                  <span>+{metrics.growthRate.toFixed(1)}%</span>
                 </div>
               </div>
               <div className="h-12 w-12 rounded-full bg-gradient-to-r from-primary to-pizza-red flex items-center justify-center">
@@ -101,10 +103,10 @@ export function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Orders</p>
-                <p className="text-3xl font-bold text-foreground">{totalOrders}</p>
+                <p className="text-3xl font-bold text-foreground">{metrics.totalOrders}</p>
                 <div className="flex items-center text-sm text-success mt-1">
                   <ArrowUpRight className="w-4 h-4 mr-1" />
-                  <span>+8.2%</span>
+                  <span>+{((metrics.recentOrders / metrics.totalOrders) * 100).toFixed(1)}%</span>
                 </div>
               </div>
               <div className="h-12 w-12 rounded-full bg-gradient-to-r from-pizza-orange to-warning flex items-center justify-center">
@@ -119,10 +121,10 @@ export function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Avg Order Value</p>
-                <p className="text-3xl font-bold text-foreground">LKR {averageOrderValue.toFixed(2)}</p>
+                <p className="text-3xl font-bold text-foreground">LKR {metrics.averageOrderValue.toFixed(2)}</p>
                 <div className="flex items-center text-sm text-success mt-1">
                   <ArrowUpRight className="w-4 h-4 mr-1" />
-                  <span>+5.4%</span>
+                  <span>Active</span>
                 </div>
               </div>
               <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center">
@@ -137,7 +139,7 @@ export function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Menu Items</p>
-                <p className="text-3xl font-bold text-foreground">{totalItems}</p>
+                <p className="text-3xl font-bold text-foreground">{metrics.totalItems}</p>
                 <div className="flex items-center text-sm text-muted-foreground mt-1">
                   <Clock className="w-4 h-4 mr-1" />
                   <span>Active</span>
@@ -164,19 +166,19 @@ export function Dashboard() {
           <CardContent>
             {topItems.length > 0 ? (
               <div className="space-y-4">
-                {topItems.map(([itemName, data], index) => (
-                  <div key={itemName} className="flex items-center justify-between">
+                {topItems.map((item, index) => (
+                  <div key={`top-item-${item.itemName}`} className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold text-sm">
                         {index + 1}
                       </div>
                       <div>
-                        <p className="font-medium text-foreground">{itemName}</p>
-                        <p className="text-sm text-muted-foreground">{data.quantity} sold</p>
+                        <p className="font-medium text-foreground">{item.itemName}</p>
+                        <p className="text-sm text-muted-foreground">{item.quantity} sold</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold text-foreground">LKR {data.revenue.toFixed(2)}</p>
+                      <p className="font-semibold text-foreground">LKR {item.revenue.toFixed(2)}</p>
                       <Badge variant="secondary" className="text-xs">
                         Revenue
                       </Badge>
@@ -202,20 +204,20 @@ export function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {recentActivity.length > 0 ? (
+            {recentOrders.length > 0 ? (
               <div className="space-y-4">
-                {recentActivity.map((invoice) => (
-                  <div key={invoice.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                {recentOrders.map((order) => (
+                  <div key={`recent-order-${order.invoiceNumber}`} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
                     <div>
-                      <p className="font-medium text-foreground">{invoice.customerName}</p>
+                      <p className="font-medium text-foreground">{order.customerName}</p>
                       <p className="text-sm text-muted-foreground">
-                        {invoice.items.length} items • {new Date(invoice.date).toLocaleDateString()}
+                        {order.itemCount} items • {new Date(order.date).toLocaleDateString()}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold text-foreground">LKR {invoice.total.toFixed(2)}</p>
+                      <p className="font-semibold text-foreground">LKR {order.total.toFixed(2)}</p>
                       <Badge variant="outline" className="text-xs">
-                        {invoice.invoiceNumber}
+                        {order.invoiceNumber}
                       </Badge>
                     </div>
                   </div>
@@ -258,14 +260,14 @@ export function Dashboard() {
       </Card>
 
       {/* Recent Revenue Highlight */}
-      {recentRevenue > 0 && (
+      {metrics.recentRevenue > 0 && (
         <Card className="bg-gradient-to-r from-primary/10 to-pizza-red/10 border-primary/20 animate-glow">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Last 7 Days Revenue</p>
-                <p className="text-2xl font-bold text-primary">LKR {recentRevenue.toFixed(2)}</p>
-                <p className="text-sm text-muted-foreground">{recentInvoices.length} orders</p>
+                <p className="text-2xl font-bold text-primary">LKR {metrics.recentRevenue.toFixed(2)}</p>
+                <p className="text-sm text-muted-foreground">{metrics.recentOrders} orders</p>
               </div>
               <div className="h-16 w-16 rounded-full bg-gradient-to-r from-primary to-pizza-red flex items-center justify-center animate-float">
                 <Calendar className="w-8 h-8 text-white" />
