@@ -41,6 +41,7 @@ export function ItemManagement() {
   const [items, setItems] = useState<Item[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
   // Initialize form with react-hook-form
@@ -60,14 +61,42 @@ export function ItemManagement() {
 
   const loadItems = async () => {
     try {
+      setIsLoading(true);
+      console.log('Fetching items...');
       const loadedItems = await itemsApi.getItems();
-    setItems(loadedItems);
+      console.log('Loaded items:', loadedItems);
+      
+      // Validate items and filter out any invalid ones
+      const validItems = loadedItems.filter(item => {
+        if (!item.id) {
+          console.warn('Found item without ID:', item);
+          return false;
+        }
+        return true;
+      });
+      
+      console.log('Valid items:', validItems);
+      setItems(validItems);
+      
+      // Debug grouped items
+      const grouped = validItems.reduce((acc, item) => {
+        if (!acc[item.category]) {
+          acc[item.category] = [];
+        }
+        acc[item.category].push(item);
+        return acc;
+      }, {} as Record<string, Item[]>);
+      console.log('Grouped items:', grouped);
+      
     } catch (error) {
+      console.error('Error loading items:', error);
       toast({
         title: "Error",
-        description: "Failed to load items",
+        description: "Failed to load items. Please check the console for details.",
         variant: "destructive"
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -288,7 +317,14 @@ export function ItemManagement() {
         </Dialog>
       </div>
 
-      {Object.entries(groupedItems).length === 0 ? (
+      {isLoading ? (
+        <Card>
+          <CardContent className="text-center py-12">
+            <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-foreground">Loading items...</h3>
+          </CardContent>
+        </Card>
+      ) : Object.entries(groupedItems).length === 0 ? (
         <Card>
           <CardContent className="text-center py-12">
             <Pizza className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
@@ -302,14 +338,17 @@ export function ItemManagement() {
         </Card>
       ) : (
         Object.entries(groupedItems).map(([category, categoryItems]) => (
-            <Card key={`category-${category}`}>
+            <Card key={`category-${category}-${Date.now()}`}>
               <CardHeader>
               <CardTitle className="capitalize">{category}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {categoryItems.map((item) => (
-                  <Card key={`item-${item.id}`} className="transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group">
+                  <Card 
+                    key={`item-${item.id || `temp-${Date.now()}-${Math.random()}`}`} 
+                    className="transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group"
+                  >
                       <CardContent className="p-4">
                       <div className="flex justify-between items-start">
                         <div className="space-y-2">

@@ -1,11 +1,15 @@
-const API_BASE_URL = '/api';
+const API_BASE_URL = 'http://localhost:8080';
 
 export interface Item {
   id: number;
+  ID?: number; // For backend compatibility
   name: string;
   category: 'pizza' | 'topping' | 'beverage' | 'other';
   price: number;
   description?: string;
+  CreatedAt?: string;
+  UpdatedAt?: string;
+  DeletedAt?: string | null;
 }
 
 export interface InvoiceItem {
@@ -55,7 +59,18 @@ export const itemsApi = {
   getItems: async (): Promise<Item[]> => {
     const response = await fetch(`${API_BASE_URL}/items`);
     if (!response.ok) throw new Error('Failed to fetch items');
-    return response.json();
+    const items = await response.json();
+    // Map the backend response to match our frontend interface
+    return items.map((item: any) => ({
+      id: item.ID,  // Map ID to id
+      name: item.name,
+      category: item.category,
+      price: item.price,
+      description: item.description,
+      CreatedAt: item.CreatedAt,
+      UpdatedAt: item.UpdatedAt,
+      DeletedAt: item.DeletedAt
+    }));
   },
 
   getItem: async (id: number): Promise<Item> => {

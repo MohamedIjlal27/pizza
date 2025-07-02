@@ -221,34 +221,34 @@ export function InvoiceManagement() {
                         </span>
                       </div>
                       <h3 className="font-semibold">{invoice.customerName}</h3>
-                      {invoice.customerPhone && (
-                        <p className="text-sm text-muted-foreground">{invoice.customerPhone}</p>
-                      )}
+                        {invoice.customerPhone && (
+                          <p className="text-sm text-muted-foreground">{invoice.customerPhone}</p>
+                        )}
                       <p className="font-medium">LKR {invoice.total.toFixed(2)}</p>
                     </div>
-                    <div className="flex space-x-2">
+                      <div className="flex space-x-2">
                       <Button variant="ghost" size="icon" onClick={() => handlePrint(invoice)}>
                         <Printer className="w-4 h-4" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
                           <Button variant="ghost" size="icon">
                             <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Invoice</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete invoice {invoice.invoiceNumber}? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Invoice</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete invoice {invoice.invoiceNumber}? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction onClick={() => handleDelete(invoice)}>Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                     </div>
                   </div>
                 </CardContent>

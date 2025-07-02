@@ -38,7 +38,7 @@ export function PrintableInvoice({ invoice }: PrintableInvoiceProps) {
         <div>
           <h2 className="font-semibold mb-2">Bill To:</h2>
           <p>{invoice.customerName}</p>
-          {invoice.customerPhone && <p>{invoice.customerPhone}</p>}
+            {invoice.customerPhone && <p>{invoice.customerPhone}</p>}
         </div>
         <div className="text-right">
           <h2 className="font-semibold mb-2">Invoice Details:</h2>
@@ -47,25 +47,25 @@ export function PrintableInvoice({ invoice }: PrintableInvoiceProps) {
       </div>
 
       <table className="w-full mb-8">
-        <thead>
+          <thead>
           <tr className="border-b">
             <th className="text-left py-2">Item</th>
             <th className="text-right py-2">Qty</th>
             <th className="text-right py-2">Price</th>
             <th className="text-right py-2">Total</th>
-          </tr>
-        </thead>
-        <tbody>
+            </tr>
+          </thead>
+          <tbody>
           {invoice.items.map((item) => (
             <tr key={`invoice-item-${item.itemId}-${item.quantity}`} className="border-b">
               <td className="py-2">{items[item.itemId]?.name || 'Loading...'}</td>
               <td className="text-right py-2">{item.quantity}</td>
               <td className="text-right py-2">LKR {item.price.toFixed(2)}</td>
               <td className="text-right py-2">LKR {(item.quantity * item.price).toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
       <div className="text-right">
         <p className="text-xl font-bold">Total: LKR {invoice.total.toFixed(2)}</p>
