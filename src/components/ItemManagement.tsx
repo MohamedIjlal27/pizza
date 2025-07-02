@@ -3,40 +3,40 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Plus, Edit, Trash2, Pizza, Coffee, PlusCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Plus, Pizza, Coffee, PlusCircle } from 'lucide-react';
 import { itemsApi, type Item } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { LoadingState, EmptyState, ItemCard, ItemForm, formSchema, type FormValues } from './item-management';
 
-// Form validation schema
-const formSchema = z.object({
-  name: z.string()
-    .min(2, 'Name must be at least 2 characters')
-    .max(50, 'Name must be less than 50 characters'),
-  category: z.enum(['pizza', 'topping', 'beverage', 'other'] as const),
-  price: z.string()
-    .refine(
-      (val) => {
-        const num = parseFloat(val);
-        return !isNaN(num) && num > 0;
-      },
-      'Price must be a positive number'
-    ),
-  description: z.string().max(200, 'Description must be less than 200 characters').optional(),
-});
+// Utility functions
+const getCategoryIcon = (category: Item['category']) => {
+  switch (category) {
+    case 'pizza':
+      return <Pizza className="w-4 h-4" />;
+    case 'beverage':
+      return <Coffee className="w-4 h-4" />;
+    default:
+      return <PlusCircle className="w-4 h-4" />;
+  }
+};
 
-type FormValues = z.infer<typeof formSchema>;
+const getCategoryColor = (category: Item['category']) => {
+  switch (category) {
+    case 'pizza':
+      return 'bg-primary text-primary-foreground';
+    case 'topping':
+      return 'bg-pizza-orange text-white';
+    case 'beverage':
+      return 'bg-blue-500 text-white';
+    default:
+      return 'bg-gray-500 text-white';
+  }
+};
 
+// Main ItemManagement Component
 export function ItemManagement() {
   const [items, setItems] = useState<Item[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -44,7 +44,6 @@ export function ItemManagement() {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  // Initialize form with react-hook-form
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -62,11 +61,7 @@ export function ItemManagement() {
   const loadItems = async () => {
     try {
       setIsLoading(true);
-      console.log('Fetching items...');
       const loadedItems = await itemsApi.getItems();
-      console.log('Loaded items:', loadedItems);
-      
-      // Validate items and filter out any invalid ones
       const validItems = loadedItems.filter(item => {
         if (!item.id) {
           console.warn('Found item without ID:', item);
@@ -74,20 +69,7 @@ export function ItemManagement() {
         }
         return true;
       });
-      
-      console.log('Valid items:', validItems);
       setItems(validItems);
-      
-      // Debug grouped items
-      const grouped = validItems.reduce((acc, item) => {
-        if (!acc[item.category]) {
-          acc[item.category] = [];
-        }
-        acc[item.category].push(item);
-        return acc;
-      }, {} as Record<string, Item[]>);
-      console.log('Grouped items:', grouped);
-      
     } catch (error) {
       console.error('Error loading items:', error);
       toast({
@@ -110,7 +92,7 @@ export function ItemManagement() {
     setEditingItem(null);
   };
 
-  const handleSubmit = form.handleSubmit(async (data) => {
+  const handleSubmit = async (data: FormValues) => {
     try {
       const price = parseFloat(data.price);
       
@@ -148,7 +130,7 @@ export function ItemManagement() {
         variant: "destructive"
       });
     }
-  });
+  };
 
   const handleEdit = (item: Item) => {
     setEditingItem(item);
@@ -175,30 +157,6 @@ export function ItemManagement() {
         description: "Failed to delete item",
         variant: "destructive"
       });
-    }
-  };
-
-  const getCategoryIcon = (category: Item['category']) => {
-    switch (category) {
-      case 'pizza':
-        return <Pizza className="w-4 h-4" />;
-      case 'beverage':
-        return <Coffee className="w-4 h-4" />;
-      default:
-        return <PlusCircle className="w-4 h-4" />;
-    }
-  };
-
-  const getCategoryColor = (category: Item['category']) => {
-    switch (category) {
-      case 'pizza':
-        return 'bg-primary text-primary-foreground';
-      case 'topping':
-        return 'bg-pizza-orange text-white';
-      case 'beverage':
-        return 'bg-blue-500 text-white';
-      default:
-        return 'bg-gray-500 text-white';
     }
   };
 
@@ -232,169 +190,39 @@ export function ItemManagement() {
             <DialogHeader>
               <DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
             </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="Item name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="category"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Category</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a category" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="pizza">Pizza</SelectItem>
-                          <SelectItem value="topping">Topping</SelectItem>
-                          <SelectItem value="beverage">Beverage</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="price"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Price</FormLabel>
-                      <FormControl>
-                        <Input {...field} type="number" step="0.01" placeholder="0.00" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea {...field} placeholder="Item description" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">
-                    {editingItem ? 'Update' : 'Add'} Item
-                  </Button>
-                </div>
-              </form>
-            </Form>
+            <ItemForm 
+              form={form}
+              editingItem={editingItem}
+              onSubmit={handleSubmit}
+              onCancel={() => setIsDialogOpen(false)}
+            />
           </DialogContent>
         </Dialog>
       </div>
 
       {isLoading ? (
-        <Card>
-          <CardContent className="text-center py-12">
-            <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground">Loading items...</h3>
-          </CardContent>
-        </Card>
+        <LoadingState />
       ) : Object.entries(groupedItems).length === 0 ? (
-        <Card>
-          <CardContent className="text-center py-12">
-            <Pizza className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No items yet</h3>
-            <p className="text-muted-foreground mb-4">Add your first menu item to get started</p>
-            <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Item
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState onAddClick={() => setIsDialogOpen(true)} />
       ) : (
         Object.entries(groupedItems).map(([category, categoryItems]) => (
-            <Card key={`category-${category}-${Date.now()}`}>
-              <CardHeader>
+          <Card key={`category-${category}-${Date.now()}`}>
+            <CardHeader>
               <CardTitle className="capitalize">{category}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {categoryItems.map((item) => (
-                  <Card 
-                    key={`item-${item.id || `temp-${Date.now()}-${Math.random()}`}`} 
-                    className="transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group"
-                  >
-                      <CardContent className="p-4">
-                      <div className="flex justify-between items-start">
-                        <div className="space-y-2">
-                          <h3 className="font-semibold text-foreground">{item.name}</h3>
-                          <Badge variant="outline" className={getCategoryColor(item.category)}>
-                            <span className="flex items-center space-x-1">
-                              {getCategoryIcon(item.category)}
-                              <span>{item.category}</span>
-                            </span>
-                            </Badge>
-                          {item.description && (
-                            <p className="text-sm text-muted-foreground">{item.description}</p>
-                          )}
-                            <p className="text-lg font-bold text-foreground">LKR {item.price.toFixed(2)}</p>
-                        </div>
-                        <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button size="icon" variant="ghost" onClick={() => handleEdit(item)}>
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="icon" variant="ghost">
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Item</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete {item.name}? This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(item)}>Delete</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {categoryItems.map((item) => (
+                  <ItemCard
+                    key={`item-${item.id}`}
+                    item={item}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         ))
       )}
     </div>
